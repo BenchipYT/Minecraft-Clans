@@ -1,0 +1,3 @@
+import { Page } from "@/lib/page";
+const F = [["Einrichtung & Konfiguration", "Server, Welten und Einstellungen übernehmen wir."], ["Plugin-Service", "Installation, Updates und Entfernung durch Techniker."], ["Backups", "Regelmäßige Sicherungen, Wiederherstellung auf Anfrage."], ["Support-Tickets", "Direkter Draht zum Team im Kundenportal."], ["Event-Server", "Vorbereitung für Events, Projekte und Launches."], ["Skalierbar", "Mehrere Nodes, isolierte Server per Docker."]];
+export default function P() { return <Page title="Features"><div className="grid gap-4 sm:grid-cols-2">{F.map(([t, d]) => <div key={t} className="card"><h3 className="font-semibold text-accent">{t}</h3><p className="mt-1 text-sm">{d}</p></div>)}</div></Page>; }

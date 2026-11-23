@@ -1,0 +1,2 @@
+export const Page = ({ title, children }: { title: string; children: React.ReactNode }) => (<div className="mx-auto max-w-3xl"><h1 className="text-3xl font-bold">{title}</h1><div className="mt-6 space-y-4 text-muted">{children}</div></div>);
+export const Legal = ({ title }: { title: string }) => (<Page title={title}><p className="card border-accent text-white">Platzhalter: Dieser Text muss vor dem produktiven Betrieb rechtlich geprüft und vollständig ergänzt werden.</p></Page>);

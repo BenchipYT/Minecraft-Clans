@@ -1,0 +1,19 @@
+import { requireUser } from "@/lib/auth"; import { db } from "@/lib/db"; import { mollieConfigured } from "@/lib/mollie"; import { MONTHS, LABEL, allowedMethods, isFree, eur, settlePayment } from "@/lib/payments";
+export const dynamic = "force-dynamic";
+const Methods = () => <fieldset className="space-y-1 text-sm">{allowedMethods().map((m, i) => <label key={m} className="block"><input type="radio" name="method" value={m} defaultChecked={i === 0} /> {LABEL[m] ?? m} <span className="text-muted">{isFree(m) ? "(ohne Gebühr)" : "(mit Zahlungsgebühr)"}</span></label>)}</fieldset>;
+const Months = () => <select name="months" className="input w-auto">{MONTHS.map(m => <option key={m} value={m}>{m} Monat{m > 1 && "e"}</option>)}</select>;
+export default async function P({ searchParams }: { searchParams: Promise<{ p?: string; e?: string }> }) {
+  const u = await requireUser(), { p, e } = await searchParams; let note = "";
+  if (p) { const pay = await db.payment.findFirst({ where: { id: p, userId: u.id } }); if (pay) { const s = await settlePayment(pay.id); note = s?.status === "PAID" ? "Zahlung eingegangen, danke! Dein Beleg ist unten." : s?.status === "OPEN" ? "Zahlung wird noch verarbeitet. Das kann bei Überweisungen einige Tage dauern." : "Die Zahlung wurde nicht abgeschlossen."; } }
+  const [sv, pk, pays] = await Promise.all([db.server.findMany({ where: { ownerId: u.id }, include: { package: true } }), db.package.findMany({ where: { active: true, priceCents: { gt: 0 } }, orderBy: { sortOrder: "asc" } }), db.payment.findMany({ where: { userId: u.id, status: "PAID" }, orderBy: { paidAt: "desc" } })]);
+  const ready = mollieConfigured() && allowedMethods().some(isFree);
+  return (<><h1 className="text-2xl font-bold">Pakete &amp; Abrechnung</h1>{note && <p className="mt-2 text-accent">{note}</p>}{e && <p className="mt-2 text-red-400">{e}</p>}
+    <h2 className="mt-6 font-semibold">Meine Server</h2><div className="mt-2 space-y-2">{sv.map(s => <div key={s.id} className="card space-y-2"><div className="flex justify-between"><span>{s.name} · {s.package.name} <span className="text-sm text-muted">· {s.status}</span></span>
+      <span className="text-sm text-muted">{s.paidUntil ? `bezahlt bis ${s.paidUntil.toLocaleDateString("de-DE")}` : "kostenlos"}</span></div>
+      {s.paidUntil && ready && <form action="/portal/billing/confirm" className="flex flex-wrap items-center gap-2"><input type="hidden" name="kind" value="renew" /><input type="hidden" name="serverId" value={s.id} />
+        <select name="packageId" defaultValue={s.packageId} className="input w-auto">{pk.map(x => <option key={x.id} value={x.id}>{x.name} ({eur(x.priceCents)}/Monat)</option>)}</select><Months /><Methods /><button className="btn btn-ghost">Verlängern / Paket wechseln</button></form>}</div>)}</div>
+    <h2 className="mt-8 font-semibold">Neuen Server bestellen</h2>
+    {!ready ? <p className="mt-2 text-sm text-muted">Bestellungen sind noch nicht freigeschaltet.</p> : <div className="mt-3 grid gap-4 sm:grid-cols-2">{pk.map(x => <form key={x.id} action="/portal/billing/confirm" className="card space-y-2"><input type="hidden" name="kind" value="order" /><input type="hidden" name="packageId" value={x.id} />
+      <b>{x.name}</b><p className="text-sm text-muted">{x.ramGb} GB RAM · {x.maxPlayers} Spieler · {eur(x.priceCents)}/Monat</p><input name="name" placeholder="Servername" required className="input" /><Months /><Methods /><button className="btn btn-primary w-full">Weiter</button></form>)}</div>}
+    <h2 className="mt-8 font-semibold">Belege</h2><div className="mt-2 space-y-2">{pays.length === 0 && <p className="text-sm text-muted">Noch keine Zahlungen.</p>}{pays.map(x => <a key={x.id} href={`/portal/billing/beleg/${x.id}`} className="card flex justify-between hover:border-accent"><span>Rechnung {x.invoiceNo} · {x.paidAt?.toLocaleDateString("de-DE")}</span><b>{eur(x.totalCents)}</b></a>)}</div></>);
+}

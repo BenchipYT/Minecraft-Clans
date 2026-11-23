@@ -1,0 +1,246 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  OWNER
+  ADMIN
+  TECHNICIAN
+  SUPPORT
+  CREATOR_MGMT
+}
+
+enum AppStatus {
+  OPEN
+  ACCEPTED
+  REJECTED
+}
+
+model User {
+  id String @id @default(cuid())
+  email String @unique
+  name String
+  passwordHash String
+  role Role @default(CUSTOMER)
+  blocked Boolean @default(false)
+  internalNote String?
+  emailVerified Boolean @default(false)
+  payments Payment[]
+  permissions String[] @default([]) // Rechte des Teammitglieds (Owner hat immer alle)
+  createdAt DateTime @default(now())
+  sessions Session[]
+  servers Server[]
+  tickets Ticket[]
+  resets PasswordReset[]
+  notifications Notification[]
+  ticketMessages TicketMessage[]
+}
+model Session {
+  id String @id @default(cuid())
+  tokenHash String @unique
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+}
+model Package {
+  id String @id @default(cuid())
+  slug String @unique
+  name String
+  priceCents Int
+  ramGb Int
+  maxPlayers Int
+  diskGb Int
+  features String[]
+  payments Payment[]
+  sortOrder Int @default(0)
+  active Boolean @default(true)
+  servers Server[]
+}
+model Server {
+  id String @id @default(cuid())
+  name String
+  version String @default("1.21.1")
+  address String?
+  status String @default("PENDING")
+  applicationId String? @unique // Idempotenz der Bewerbungs-Automation
+  paidUntil DateTime? // null = kostenlos (Creator-Programm)
+  reminderFor DateTime? // Laufzeitende, für das schon erinnert wurde
+  pteroIdentifier String? // Kurz-ID für die Client-API
+  pteroId Int? @unique // idempotent: ein Panel-Server pro Eintrag
+  ownerId String
+  owner User @relation(fields: [ownerId], references: [id])
+  packageId String
+  package Package @relation(fields: [packageId], references: [id])
+  plugins ServerPlugin[]
+  backups Backup[]
+  createdAt DateTime @default(now())
+}
+model CreatorApplication {
+  id String @id @default(cuid())
+  creatorName String
+  channelName String
+  socialLinks String
+  avgViews String
+  project String
+  serverType String
+  expectedPlayers Int
+  duration String
+  contactEmail String
+  status AppStatus @default(OPEN)
+  internalNote String?
+  permissions String[] @default([]) // Rechte des Teammitglieds (Owner hat immer alle)
+  reviewedById String?
+  createdAt DateTime @default(now())
+}
+model AuditLog {
+  id String @id @default(cuid())
+  actorId String?
+  action String
+  target String?
+  createdAt DateTime @default(now())
+}
+
+enum TicketStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+model Ticket {
+  id String @id @default(cuid())
+  number Int @unique @default(autoincrement())
+  serverId String? // betroffener Server (optional)
+  subject String
+  category String
+  status TicketStatus @default(OPEN)
+  priority TicketPriority @default(NORMAL)
+  ownerId String
+  owner User @relation(fields: [ownerId], references: [id])
+  assigneeId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  messages TicketMessage[]
+}
+model TicketMessage {
+  id String @id @default(cuid())
+  ticketId String
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId String
+  author User @relation(fields: [authorId], references: [id])
+  body String
+  internal Boolean @default(false) // interne Notiz, für Kunden unsichtbar
+  attachments Attachment[]
+  createdAt DateTime @default(now())
+}
+
+model ContactMessage {
+  id String @id @default(cuid())
+  name String
+  email String
+  message String
+  createdAt DateTime @default(now())
+}
+model Plugin {
+  id String @id @default(cuid())
+  name String @unique
+  description String
+  version String
+  mcVersions String
+  dependencies String?
+  source String
+  license String?
+  changelog String?
+  servers ServerPlugin[]
+}
+model ServerPlugin {
+  serverId String
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  pluginId String
+  plugin Plugin @relation(fields: [pluginId], references: [id], onDelete: Cascade)
+  installedById String
+  createdAt DateTime @default(now())
+  @@id([serverId, pluginId])
+}
+model Backup {
+  id String @id @default(cuid())
+  serverId String
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  panelUuid String? @unique
+  label String
+  sizeMb Int @default(0)
+  restoreRequestedAt DateTime?
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text String
+  link String?
+  read Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+
+model PasswordReset {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String @unique
+  purpose String @default("reset")
+  expiresAt DateTime
+}
+
+model Attachment {
+  id String @id @default(cuid())
+  messageId String
+  message TicketMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  fileName String
+  mime String
+  size Int
+  storageKey String
+  createdAt DateTime @default(now())
+}
+
+model Payment {
+  id String @id @default(cuid())
+  mollieId String? @unique
+  invoiceNo Int? @unique // fortlaufend, nur für bezahlte
+  userId String
+  user User @relation(fields: [userId], references: [id])
+  kind String // ORDER | RENEW
+  packageId String
+  package Package @relation(fields: [packageId], references: [id])
+  serverName String?
+  serverId String?
+  months Int
+  baseCents Int
+  feeCents Int
+  totalCents Int
+  method String
+  status String @default("OPEN")
+  paidAt DateTime?
+  consentAt DateTime? // AGB-Akzeptanz und Zustimmung zum vorzeitigen Leistungsbeginn
+  createdAt DateTime @default(now())
+}
+model Counter {
+  id String @id
+  value Int
+}
+model News {
+  id String @id @default(cuid())
+  title String
+  body String
+  createdAt DateTime @default(now())
+}

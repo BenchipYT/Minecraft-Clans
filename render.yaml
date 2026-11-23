@@ -1,0 +1,28 @@
+databases:
+  - name: chip-networks-db
+    plan: free
+    region: oregon
+    databaseName: chipnetworks
+    user: chipnetworks
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: chip-networks
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
+    startCommand: npx prisma db push && npm run db:seed && npm run start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: chip-networks-db
+          property: connectionString
+      - key: SEED_ADMIN_EMAIL
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
